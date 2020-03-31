@@ -8,8 +8,6 @@ from net.losses import StdLoss, GradientLoss, ExtendedL1Loss, GrayLoss
 from net.losses import ExclusionLoss
 from net.noise import get_noise
 
-import GPUtil
-
 WatermarkResult = namedtuple("WatermarkResult", ['clean', 'watermark', 'mask', 'psnr'])
 
 
