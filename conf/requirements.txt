@@ -3,7 +3,7 @@ pyyaml==5.3
 scikit-learn
 sk-video
 scikit-image
-pillow
+pillow==6.1
 numpy 
 scipy
 keras==2.3.1

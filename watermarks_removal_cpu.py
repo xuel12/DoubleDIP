@@ -3,11 +3,18 @@ from collections import namedtuple
 from skimage.measure import compare_psnr
 
 from net import *
-from net.downsampler import *
-from net.losses import StdLoss, GradientLoss, ExtendedL1Loss, GrayLoss
-from net.losses import ExclusionLoss
-from net.noise import get_noise
+from net.downsampler_cpu import *
+from net.losses_cpu import StdLoss, GradientLoss, ExtendedL1Loss, GrayLoss
+from net.losses_cpu import ExclusionLoss
+from net.noise_cpu import get_noise
 
+import os
+try: 
+    os.chdir('/Users/xuel12/Documents/MSdatascience/CS7180AI/DoubleDIP')
+    print("Current directory is {}".format(os.getcwd()))
+except: 
+    print("Something wrong with specified directory. Exception- ", sys.exc_info())
+    
 WatermarkResult = namedtuple("WatermarkResult", ['clean', 'watermark', 'mask', 'psnr'])
 
 
@@ -53,7 +60,7 @@ class Watermark(object):
             filter_size_up=5,
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU')
 
-        self.clean_net = clean.type(torch.cuda.FloatTensor)
+        self.clean_net = clean.type(torch.FloatTensor)
 
         watermark = skip(
             self.input_depth, 3,
@@ -65,7 +72,7 @@ class Watermark(object):
             filter_size_up=5,
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU')
 
-        self.watermark_net = watermark.type(torch.cuda.FloatTensor)
+        self.watermark_net = watermark.type(torch.FloatTensor)
 
         mask = skip(
             self.input_depth, 1,
@@ -76,35 +83,35 @@ class Watermark(object):
             filter_size_down=3,
             filter_size_up=3,
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU')
-        self.mask_net = mask.type(torch.cuda.FloatTensor)
+        self.mask_net = mask.type(torch.FloatTensor)
 
     def _init_images(self):
         image_aug = create_augmentations(self.image)
-        self.image_torchs = [np_to_torch(image).type(torch.cuda.FloatTensor) for image in image_aug]
+        self.image_torchs = [np_to_torch(image).type(torch.FloatTensor) for image in image_aug]
         water_mark_aug = create_augmentations(self.watermark_hint)
-        self.watermark_hint_torchs = [np_to_torch(watr).type(torch.cuda.FloatTensor) for watr in water_mark_aug]
+        self.watermark_hint_torchs = [np_to_torch(watr).type(torch.FloatTensor) for watr in water_mark_aug]
 
     def _init_noise(self):
         input_type = 'noise'
         # self.left_net_inputs = self.images_torch
         clean_net_inputs = create_augmentations(torch_to_np(get_noise(self.input_depth, input_type,
                                                                       (self.image_torchs[0].shape[2],
-                                                                       self.image_torchs[0].shape[3])).type(torch.cuda.FloatTensor).detach()))
-        self.clean_net_inputs = [np_to_torch(clean_net_input).type(torch.cuda.FloatTensor).detach()
+                                                                       self.image_torchs[0].shape[3])).type(torch.FloatTensor).detach()))
+        self.clean_net_inputs = [np_to_torch(clean_net_input).type(torch.FloatTensor).detach()
                                  for clean_net_input in clean_net_inputs]
 
         watermark_net_inputs = create_augmentations(torch_to_np(get_noise(self.input_depth, input_type,
                                                                           (self.image_torchs[0].shape[2],
                                                                        self.image_torchs[0].shape[3])).type(
-            torch.cuda.FloatTensor).detach()))
-        self.watermark_net_inputs = [np_to_torch(clean_net_input).type(torch.cuda.FloatTensor).detach()
+            torch.FloatTensor).detach()))
+        self.watermark_net_inputs = [np_to_torch(clean_net_input).type(torch.FloatTensor).detach()
                                  for clean_net_input in watermark_net_inputs]
 
         mask_net_inputs = create_augmentations(torch_to_np(get_noise(self.input_depth, input_type,
                                                                      (self.image_torchs[0].shape[2],
                                                                        self.image_torchs[0].shape[3])).type(
-            torch.cuda.FloatTensor).detach()))
-        self.mask_net_inputs = [np_to_torch(clean_net_input).type(torch.cuda.FloatTensor).detach()
+            torch.FloatTensor).detach()))
+        self.mask_net_inputs = [np_to_torch(clean_net_input).type(torch.FloatTensor).detach()
                                  for clean_net_input in mask_net_inputs]
 
     def _init_parameters(self):
@@ -113,7 +120,7 @@ class Watermark(object):
                           [p for p in self.mask_net.parameters()]
 
     def _init_losses(self):
-        data_type = torch.cuda.FloatTensor
+        data_type = torch.FloatTensor
         self.l1_loss = nn.L1Loss().type(data_type)
         self.extended_l1_loss = ExtendedL1Loss().type(data_type)
 
@@ -125,8 +132,8 @@ class Watermark(object):
         self._init_noise()
 
     def optimize(self):
-        torch.backends.cudnn.enabled = True
-        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.enabled = False
+        torch.backends.cudnn.benchmark = False
         # step 1
         self._step_initialization_closure(0)
         optimizer = torch.optim.Adam(self.parameters, lr=self.learning_rate)
@@ -354,7 +361,7 @@ class ManyImagesWatermarkNoHint(object):
             filter_size_up=5,
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU') for _ in self.images]
 
-        self.clean_nets = [clean.type(torch.cuda.FloatTensor) for clean in cleans]
+        self.clean_nets = [clean.type(torch.FloatTensor) for clean in cleans]
 
         mask_net = skip(
             self.input_depth, 1,
@@ -366,7 +373,7 @@ class ManyImagesWatermarkNoHint(object):
             filter_size_up=3,
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU')
 
-        self.mask_net = mask_net.type(torch.cuda.FloatTensor)
+        self.mask_net = mask_net.type(torch.FloatTensor)
 
         watermark = skip(
             self.input_depth, 3,
@@ -378,11 +385,11 @@ class ManyImagesWatermarkNoHint(object):
             filter_size_up=3,
             need_sigmoid=True, need_bias=True, pad=pad, act_fun='LeakyReLU')
 
-        self.watermark_net = watermark.type(torch.cuda.FloatTensor)
+        self.watermark_net = watermark.type(torch.FloatTensor)
 
     def _init_images(self):
         # convention - first dim is all the images, second dim is the augmenations
-        self.images_torch = [[np_to_torch(aug).type(torch.cuda.FloatTensor)
+        self.images_torch = [[np_to_torch(aug).type(torch.FloatTensor)
                               for aug in create_augmentations(image)] for image in self.images]
 
     def _init_noise(self):
@@ -392,21 +399,21 @@ class ManyImagesWatermarkNoHint(object):
         for image_idx in range(len(self.images)):
             original_noise = get_noise(self.input_depth, input_type,
                                                 (self.images_torch[image_idx][0].shape[2],
-                                                 self.images_torch[image_idx][0].shape[3])).type(torch.cuda.FloatTensor).detach()
+                                                 self.images_torch[image_idx][0].shape[3])).type(torch.FloatTensor).detach()
             augmentations = create_augmentations(torch_to_np(original_noise))
-            self.clean_nets_inputs.append([np_to_torch(aug).type(torch.cuda.FloatTensor).detach() for aug in augmentations])
+            self.clean_nets_inputs.append([np_to_torch(aug).type(torch.FloatTensor).detach() for aug in augmentations])
 
         original_noise = get_noise(self.input_depth, input_type,
                                   (self.images_torch[0][0].shape[2],
-                                   self.images_torch[0][0].shape[3])).type(torch.cuda.FloatTensor).detach()
+                                   self.images_torch[0][0].shape[3])).type(torch.FloatTensor).detach()
         augmentations = create_augmentations(torch_to_np(original_noise))
-        self.mask_net_input = [np_to_torch(aug).type(torch.cuda.FloatTensor).detach() for aug in augmentations]
+        self.mask_net_input = [np_to_torch(aug).type(torch.FloatTensor).detach() for aug in augmentations]
 
         original_noise = get_noise(self.input_depth, input_type,
                                    (self.images_torch[0][0].shape[2],
-                                    self.images_torch[0][0].shape[3])).type(torch.cuda.FloatTensor).detach()
+                                    self.images_torch[0][0].shape[3])).type(torch.FloatTensor).detach()
         augmentations = create_augmentations(torch_to_np(original_noise))
-        self.watermark_net_input = [np_to_torch(aug).type(torch.cuda.FloatTensor).detach() for aug in augmentations]
+        self.watermark_net_input = [np_to_torch(aug).type(torch.FloatTensor).detach() for aug in augmentations]
 
 
     def _init_parameters(self):
@@ -415,7 +422,7 @@ class ManyImagesWatermarkNoHint(object):
                           [p for p in self.watermark_net.parameters()]
 
     def _init_losses(self):
-        data_type = torch.cuda.FloatTensor
+        data_type = torch.FloatTensor
         self.l1_loss = nn.L1Loss().type(data_type)
         self.extended_l1_loss = ExtendedL1Loss().type(data_type)
         self.blur_function = StdLoss().type(data_type)
@@ -430,8 +437,8 @@ class ManyImagesWatermarkNoHint(object):
         self._init_noise()
 
     def optimize(self):
-        torch.backends.cudnn.enabled = True
-        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.enabled = False
+        torch.backends.cudnn.benchmark = False
         for step in range(self.steps):
             self._step_initialization_closure(step)
             optimizer = torch.optim.Adam(self.parameters, lr=self.learning_rate)
@@ -559,13 +566,13 @@ def remove_watermark_many_images(imgs_names, imgs, final_name, iters=3):
     save_image(final_name + "_final_watermark", obtained_watermark)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":    
     # with many images:
 #    im1 = prepare_image('images/fotolia1.jpg')
 #    im2 = prepare_image('images/fotolia2.jpg')
 #    im3 = prepare_image('images/fotolia3.jpg')
 #    remove_watermark_many_images(['f1', 'f2', 'f3'], [im1, im2, im3], "fotolia_many_images")
     # with one image and bounding box:
-    im = prepare_image('images/xiexie.jpg')
-    fg = prepare_image('images/xiexie_watermark.png')
+    im = prepare_image('images/saoma.jpg')
+    fg = prepare_image('images/saoma_watermark.jpg')
     remove_watermark("saoma_one_image", im, fg)

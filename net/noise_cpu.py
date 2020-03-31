@@ -90,11 +90,15 @@ class NoiseNet(nn.Module):
         self.kernel_size = kernel_size
         self.channels = channels
         to_pad = int((self.kernel_size - 1) / 2)
-        self.padder = nn.ReflectionPad2d(to_pad).type(torch.cuda.FloatTensor)
-
+        if torch.cuda.is_available():
+            self.padder = nn.ReflectionPad2d(to_pad).type(torch.cuda.FloatTensor)
+        else:
+            self.padder = nn.ReflectionPad2d(to_pad).type(torch.FloatTensor)
         to_pad = 0
-        self.convolver = nn.Conv2d(channels, channels, self.kernel_size, 1, padding=to_pad, bias=True).type(torch.cuda.FloatTensor)
-        
+        if torch.cuda.is_available():
+            self.convolver = nn.Conv2d(channels, channels, self.kernel_size, 1, padding=to_pad, bias=True).type(torch.cuda.FloatTensor)
+        else:
+            self.convolver = nn.Conv2d(channels, channels, self.kernel_size, 1, padding=to_pad, bias=True).type(torch.FloatTensor)
 
     def forward(self, x):
         assert x.shape[1] == self.channels, (x.shape, self.channels)
