@@ -1,6 +1,6 @@
 from net import skip
-from net.losses import ExclusionLoss, plot_image_grid, StdLoss
-from net.noise import get_noise
+from net.losses_cpu import ExclusionLoss, plot_image_grid, StdLoss
+from net.noise_cpu import get_noise
 from utils.image_io import *
 from skimage.measure import compare_psnr
 import numpy as np
@@ -50,13 +50,20 @@ class TwoImagesSeparation(object):
         self._init_losses()
 
     def _init_images(self):
-        self.image1_torch = np_to_torch(self.image1).type(torch.cuda.FloatTensor)
-        self.image2_torch = np_to_torch(self.image2).type(torch.cuda.FloatTensor)
+        if torch.cuda.is_available():
+            self.image1_torch = np_to_torch(self.image1).type(torch.cuda.FloatTensor)
+            self.image2_torch = np_to_torch(self.image2).type(torch.cuda.FloatTensor)
+        else:
+            self.image1_torch = np_to_torch(self.image1).type(torch.FloatTensor)
+            self.image2_torch = np_to_torch(self.image2).type(torch.FloatTensor)
 
     def _init_inputs(self):
         input_type = 'noise'
         # input_type = 'meshgrid'
-        data_type = torch.cuda.FloatTensor
+        if torch.cuda.is_available():
+            data_type = torch.cuda.FloatTensor
+        else:
+            data_type = torch.FloatTensor
         self.reflection_net_input = get_noise(self.input_depth, input_type,
                                               (self.image1.shape[1], self.image1.shape[2])).type(data_type).detach()
         self.alpha_net1_input = get_noise(self.input_depth, input_type,
@@ -73,7 +80,10 @@ class TwoImagesSeparation(object):
         self.parameters += [p for p in self.alpha2.parameters()]
 
     def _init_nets(self):
-        data_type = torch.cuda.FloatTensor
+        if torch.cuda.is_available():
+            data_type = torch.cuda.FloatTensor
+        else:
+            data_type = torch.FloatTensor
         pad = 'reflection'
         reflection_net = skip(
             self.input_depth, 3,
@@ -123,7 +133,10 @@ class TwoImagesSeparation(object):
         self.alpha2 = alpha_net2.type(data_type)
 
     def _init_losses(self):
-        data_type = torch.cuda.FloatTensor
+        if torch.cuda.is_available():
+            data_type = torch.cuda.FloatTensor
+        else:
+            data_type = torch.FloatTensor
         self.mse_loss = torch.nn.MSELoss().type(data_type)
         self.exclusion_loss = ExclusionLoss().type(data_type)
         self.blur_loss = StdLoss().type(data_type)
@@ -168,10 +181,16 @@ class TwoImagesSeparation(object):
         self.total_loss += 0.1 * self.exclusion
         # self.total_loss += self.blur_loss(self.current_alpha2) + self.blur_loss(self.current_alpha1)
         if step < 1000:
-            self.total_loss += 0.5 * self.mse_loss(self.current_alpha1,
-                                                  torch.tensor([[[[0.5]]]]).type(torch.cuda.FloatTensor))
-            self.total_loss += 0.5 * self.mse_loss(self.current_alpha2,
-                                                  torch.tensor([[[[0.5]]]]).type(torch.cuda.FloatTensor))
+            if torch.cuda.is_available():
+                self.total_loss += 0.5 * self.mse_loss(self.current_alpha1,
+                                                      torch.tensor([[[[0.5]]]]).type(torch.cuda.FloatTensor))
+                self.total_loss += 0.5 * self.mse_loss(self.current_alpha2,
+                                                      torch.tensor([[[[0.5]]]]).type(torch.cuda.FloatTensor))
+            else:
+                self.total_loss += 0.5 * self.mse_loss(self.current_alpha1,
+                                                      torch.tensor([[[[0.5]]]]).type(torch.FloatTensor))
+                self.total_loss += 0.5 * self.mse_loss(self.current_alpha2,
+                                                      torch.tensor([[[[0.5]]]]).type(torch.FloatTensor))
 
         self.total_loss.backward()
 
@@ -257,12 +276,19 @@ class Separation(object):
 
     def _init_images(self):
         self.images = create_augmentations(self.image)
-        self.images_torch = [np_to_torch(image).type(torch.cuda.FloatTensor) for image in self.images]
+        if torch.cuda.is_available():
+            self.images_torch = [np_to_torch(image).type(torch.cuda.FloatTensor) for image in self.images]
+        else:
+            self.images_torch = [np_to_torch(image).type(torch.FloatTensor) for image in self.images]
 
     def _init_inputs(self):
         input_type = 'noise'
         # input_type = 'meshgrid'
-        data_type = torch.cuda.FloatTensor
+        if torch.cuda.is_available():
+            data_type = torch.cuda.FloatTensor
+        else:
+            data_type = torch.FloatTensor
+            
         origin_noise = torch_to_np(get_noise(self.input_depth,
                                                   input_type,
                                                   (self.images_torch[0].shape[2],
@@ -280,7 +306,10 @@ class Separation(object):
                           [p for p in self.transmission_net.parameters()]
 
     def _init_nets(self):
-        data_type = torch.cuda.FloatTensor
+        if torch.cuda.is_available():
+            data_type = torch.cuda.FloatTensor
+        else:
+            data_type = torch.FloatTensor
         pad = 'reflection'
         reflection_net = skip(
             self.input_depth, self.images[0].shape[0],
@@ -307,7 +336,10 @@ class Separation(object):
         self.transmission_net = transmission_net.type(data_type)
 
     def _init_losses(self):
-        data_type = torch.cuda.FloatTensor
+        if torch.cuda.is_available():
+            data_type = torch.cuda.FloatTensor
+        else:
+            data_type = torch.FloatTensor
         self.l1_loss = nn.L1Loss().type(data_type)
         self.exclusion_loss =  ExclusionLoss().type(data_type)
 
@@ -409,7 +441,6 @@ if __name__ == "__main__":
 #    s = Separation('textures', (t1+t2)/2)
 #    s.optimize()
 #    s.finalize()
-    # Separation of textures
     t1 = prepare_image('images/xiexie_trans.jpg')
     s = Separation('xiexie', t1)
     s.optimize()
